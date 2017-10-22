@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<java version="9" class="java.beans.XMLDecoder">
+ <object class="io.github.estaro.dsv.bean.Config">
+  <void property="captureCount">
+   <int>9</int>
+  </void>
+  <void property="dirList">
+   <object class="java.util.ArrayList">
+    <void method="add">
+     <string>T:\test</string>
+    </void>
+   </object>
+  </void>
+  <void property="imageWidth">
+   <int>200</int>
+  </void>
+  <void property="tempDir">
+   <string>H:\01_daily\20171021</string>
+  </void>
+ </object>
+</java>
