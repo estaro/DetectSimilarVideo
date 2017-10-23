@@ -224,6 +224,7 @@ public class MainController {
 		// ------------------------------------------------------------------
 		// 結果をTableViewに反映
 		// ------------------------------------------------------------------
+		table.getItems().clear();
 		// hist基準でソート
 		comparedList.sort(new Comparator<VideoComparison>() {
 			@Override
@@ -248,6 +249,11 @@ public class MainController {
 		ObservableList<TableItem> data = FXCollections.observableArrayList(tableItemList);
 		table.setItems(data);
 
+		// ------------------------------------------------------------------
+		// 終了メッセージ
+		// ------------------------------------------------------------------
+		Alert alert = new Alert(AlertType.INFORMATION, "処理が完了しました");
+		alert.showAndWait();
 	}
 
 	@FXML // This method is called by the FXMLLoader when initialization is complete

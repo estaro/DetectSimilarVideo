@@ -5,9 +5,13 @@ import java.util.ArrayList;
 import java.util.List;
 
 import org.opencv.core.Core;
+import org.opencv.core.CvException;
+import org.opencv.core.DMatch;
 import org.opencv.core.Mat;
+import org.opencv.core.MatOfDMatch;
 import org.opencv.core.MatOfFloat;
 import org.opencv.core.MatOfInt;
+import org.opencv.core.MatOfKeyPoint;
 import org.opencv.core.Size;
 import org.opencv.features2d.DescriptorMatcher;
 import org.opencv.features2d.FeatureDetector;
@@ -105,7 +109,7 @@ public class OpenCvProcessor {
 		// 特徴量のための検出器
 		// ------------------------------------------------------------------
 		FeatureDetector detector = FeatureDetector.create(FeatureDetector.AKAZE);
-		DescriptorMatcher macher = DescriptorMatcher.create(DescriptorMatcher.BRUTEFORCE_L1);
+		DescriptorMatcher macher = DescriptorMatcher.create(DescriptorMatcher.BRUTEFORCE);
 
 		// ------------------------------------------------------------------
 		// 画像毎に比較
@@ -139,25 +143,28 @@ public class OpenCvProcessor {
 			// ------------------------------------------------------------------
 			// 特徴量
 			// ------------------------------------------------------------------
-			/*
-			Mat gray1 = new Mat();
-			Imgproc.cvtColor(img1, gray1, Imgproc.COLOR_RGB2GRAY);
-			MatOfKeyPoint point1 = new MatOfKeyPoint();
-			detector.detect(gray1, point1);
+			try {
+				Mat gray1 = new Mat();
+				Imgproc.cvtColor(img1, gray1, Imgproc.COLOR_RGB2GRAY);
+				Imgcodecs.imwrite(video1.getFrameDirname() + "/" + i + "gray.jpg", gray1);
+				MatOfKeyPoint point1 = new MatOfKeyPoint();
+				detector.detect(gray1, point1);
 
-			Mat gray2 = new Mat();
-			Imgproc.cvtColor(img2, gray2, Imgproc.COLOR_RGB2GRAY);
-			MatOfKeyPoint point2 = new MatOfKeyPoint();
-			detector.detect(gray2, point2);
+				Mat gray2 = new Mat();
+				Imgproc.cvtColor(img2, gray2, Imgproc.COLOR_RGB2GRAY);
+				MatOfKeyPoint point2 = new MatOfKeyPoint();
+				detector.detect(gray2, point2);
 
-			MatOfDMatch feature = new MatOfDMatch();
-			macher.match(point1, point2, feature);
-			List<Double> distanceList = new ArrayList<>();
-			for (DMatch dMatch : feature.toList()) {
-				distanceList.add(Double.valueOf(dMatch.distance));
+				MatOfDMatch feature = new MatOfDMatch();
+				macher.match(point1, point2, feature);
+				List<Double> distanceList = new ArrayList<>();
+				for (DMatch dMatch : feature.toList()) {
+					distanceList.add(Double.valueOf(dMatch.distance));
+				}
+				featureList.add(calcAvg(distanceList));
+			} catch (CvException e) {
+				// noop
 			}
-			featureList.add(calcAvg(distanceList));
-			*/
 
 		}
 
@@ -165,7 +172,7 @@ public class OpenCvProcessor {
 		videoComparison.setVideo1(video1);
 		videoComparison.setVideo2(video2);
 		videoComparison.setHist(calcAvg(histList));
-		videoComparison.setFeature(0.0);
+		videoComparison.setFeature(calcAvg(featureList));
 		return videoComparison;
 	}
 
