@@ -29,6 +29,7 @@ import javafx.scene.control.ListView;
 import javafx.scene.control.ProgressBar;
 import javafx.scene.control.TableColumn;
 import javafx.scene.control.TableView;
+import javafx.scene.control.TextArea;
 import javafx.scene.control.cell.CheckBoxListCell;
 import javafx.scene.control.cell.PropertyValueFactory;
 import javafx.scene.image.Image;
@@ -66,6 +67,9 @@ public class MainController {
 
 	@FXML
 	private ProgressBar progress;
+
+	@FXML
+	private TextArea logview;
 
 	@FXML
 	private ImageView img10;
@@ -189,6 +193,7 @@ public class MainController {
 	@FXML
 	void doExecuteAction(ActionEvent event) {
 		System.out.println("doExecuteAction");
+		long start = System.currentTimeMillis();
 		// ------------------------------------------------------------------
 		// 選択されたすべてのディレクトリの動画を読み込む
 		// ------------------------------------------------------------------
@@ -204,9 +209,10 @@ public class MainController {
 			}
 			fileList.addAll(Arrays.asList(dir.listFiles()));
 		}
+		progress.setProgress(0.01);
 		List<VideoMetadata> metaList = fileList.parallelStream().map(file -> OpenCvProcessor.captureFrame(config,
 				file.getAbsolutePath().replace("\\", "\\\\"))).filter(s -> s != null).collect(Collectors.toList());
-
+		progress.setProgress(0.10);
 		// ------------------------------------------------------------------
 		// 読み込んだ動画を比較
 		// ------------------------------------------------------------------
@@ -217,9 +223,11 @@ public class MainController {
 				metadataPairList.add(new VideoMetadataPair(metaList.get(i), metaList.get(j)));
 			}
 		}
+		progress.setProgress(0.11);
 		List<VideoComparison> comparedList = metadataPairList.parallelStream()
 				.map(pair -> OpenCvProcessor.compareImages(config, pair.video1, pair.video2)).filter(s -> s != null)
 				.collect(Collectors.toList());
+		progress.setProgress(0.90);
 
 		// ------------------------------------------------------------------
 		// 結果をTableViewに反映
@@ -238,7 +246,8 @@ public class MainController {
 				return 0;
 			}
 		});
-		List<TableItem> tableItemList = comparedList.stream().map(item -> new TableItem(item))
+		List<VideoComparison> resultList = comparedList.subList(0, 501);
+		List<TableItem> tableItemList = resultList.stream().map(item -> new TableItem(item))
 				.collect(Collectors.toList());
 		cola.setCellValueFactory(new PropertyValueFactory<>("dir1"));
 		colb.setCellValueFactory(new PropertyValueFactory<>("dir2"));
@@ -246,13 +255,15 @@ public class MainController {
 		colhist.setCellValueFactory(new PropertyValueFactory<>("hist"));
 		colfeature.setCellValueFactory(new PropertyValueFactory<>("feature"));
 
+		progress.setProgress(0.90);
 		ObservableList<TableItem> data = FXCollections.observableArrayList(tableItemList);
 		table.setItems(data);
 
 		// ------------------------------------------------------------------
 		// 終了メッセージ
 		// ------------------------------------------------------------------
-		Alert alert = new Alert(AlertType.INFORMATION, "処理が完了しました");
+		long end = System.currentTimeMillis();
+		Alert alert = new Alert(AlertType.INFORMATION, "処理が完了しました (" + (end - start) + ")ms");
 		alert.showAndWait();
 	}
 
