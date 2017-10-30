@@ -1,8 +1,17 @@
 package io.github.estaro.dsv.logic;
 
+import java.io.BufferedWriter;
 import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.PrintWriter;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.List;
+import java.util.Map;
 
 import org.opencv.core.Core;
 import org.opencv.core.CvException;
@@ -21,6 +30,11 @@ import org.opencv.imgproc.Imgproc;
 import org.opencv.videoio.VideoCapture;
 import org.opencv.videoio.Videoio;
 
+import com.google.gson.Gson;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
+
+import io.github.estaro.dsv.bean.CachedComparison;
 import io.github.estaro.dsv.bean.Config;
 import io.github.estaro.dsv.bean.VideoComparison;
 import io.github.estaro.dsv.bean.VideoMetadata;
@@ -42,8 +56,23 @@ public class OpenCvProcessor {
 	 * @param videoFile
 	 * @param outputDir
 	 * @return
+	 * @throws IOException
+	 * @throws FileNotFoundException
 	 */
-	static public VideoMetadata captureFrame(Config config, String videoFile) {
+	static public VideoMetadata captureFrame(Config config, String videoFile)
+			throws FileNotFoundException, IOException {
+
+		// 結果
+		VideoMetadata metadata = new VideoMetadata();
+		metadata.setFilename(videoFile);
+
+		// 出力ディレクトリ
+		String outputDir = config.getTempDir() + "/" + String.valueOf(videoFile.hashCode()).replace("-", "_");
+		metadata.setFrameDirname(outputDir);
+		File dir = new File(outputDir);
+		if (!dir.exists()) {
+			dir.mkdir();
+		}
 		// ------------------------------------------------------------------
 		// 動画を開く
 		// ------------------------------------------------------------------
@@ -53,17 +82,6 @@ public class OpenCvProcessor {
 			System.out.println("file not opened.");
 			return null;
 		}
-
-		// 出力ディレクトリ
-		String outputDir = config.getTempDir() + "/" + String.valueOf(videoFile.hashCode()).replace("-", "_");
-		File dir = new File(outputDir);
-		if (!dir.exists()) {
-			dir.mkdir();
-		}
-		// 結果
-		VideoMetadata metadata = new VideoMetadata();
-		metadata.setFilename(videoFile);
-		metadata.setFrameDirname(outputDir);
 
 		// ------------------------------------------------------------------
 		// 動画情報の取得
@@ -118,6 +136,8 @@ public class OpenCvProcessor {
 			featureList.add(desc);
 		}
 
+		capture.release();
+
 		metadata.setPlayTime(time);
 		metadata.setHistgramImg(histList);
 		metadata.setFeatureImg(featureList);
@@ -129,21 +149,38 @@ public class OpenCvProcessor {
 	 * 2つのディレクトリ内の画像をそれぞれ比較する
 	 *
 	 * @param config
+	 * @param cache
 	 * @param video1
 	 * @param video2
 	 * @return
+	 * @throws IOException
+	 * @throws FileNotFoundException
 	 */
-	static public VideoComparison compareImages(Config config, VideoMetadata video1, VideoMetadata video2) {
+	static public VideoComparison compareImages(Config config, Map<String, CachedComparison> cache,
+			VideoMetadata video1, VideoMetadata video2) throws FileNotFoundException, IOException {
 
-		System.out.println(video1.getFilename() + "<--->" + video2.getFilename());
+		String key = video1.getFilename() + "<--->" + video2.getFilename();
+		System.out.println(key);
 		List<Double> histList = new ArrayList<Double>();
 		List<Double> featureList = new ArrayList<Double>();
+
+		// キャッシュから返す
+		if (cache != null && cache.containsKey(key)) {
+			VideoComparison videoComparison = new VideoComparison();
+			videoComparison.setFilename1(cache.get(key).file1);
+			videoComparison.setFilename2(cache.get(key).file1);
+			videoComparison.setPlaytime(cache.get(key).playtimeDiff);
+			videoComparison.setHist(cache.get(key).hist);
+			videoComparison.setFeature(cache.get(key).feature);
+			return videoComparison;
+		}
 
 		// ------------------------------------------------------------------
 		// 再生時間が閾値以上異なる→比較しない
 		// ------------------------------------------------------------------
 		long playtime1 = video1.getPlayTime();
-		double playtimeDiff = (double) (Math.abs(playtime1 - video2.getPlayTime()));
+		long playtime2 = video2.getPlayTime();
+		long playtimeDiff = Math.abs(playtime1 - playtime2);
 		if ((playtimeDiff / playtime1) > 0.1) {
 			return null;
 		}
@@ -191,6 +228,7 @@ public class OpenCvProcessor {
 		VideoComparison videoComparison = new VideoComparison();
 		videoComparison.setVideo1(video1);
 		videoComparison.setVideo2(video2);
+		videoComparison.setPlaytime(playtimeDiff);
 		videoComparison.setHist(calcAvg(histList));
 		videoComparison.setFeature(calcAvg(featureList));
 		return videoComparison;
@@ -211,5 +249,72 @@ public class OpenCvProcessor {
 			sum += val;
 		}
 		return sum / inputList.size();
+	}
+
+	public static void storeMat(String filename, Mat mat) throws IOException {
+		String jsondata = matToJson(mat);
+		PrintWriter writer = new PrintWriter(new BufferedWriter(new FileWriter(new File(filename))));
+		writer.write(jsondata);
+		writer.close();
+	}
+
+	public static Mat loadMat(String filename) throws IOException {
+		InputStream input = new FileInputStream(filename);
+		int size = input.available();
+		byte[] buffer = new byte[size];
+		input.read(buffer);
+		input.close();
+		return matFromJson(new String(buffer));
+	}
+
+	public static String matToJson(Mat mat) {
+		JsonObject obj = new JsonObject();
+
+		if (mat.isContinuous()) {
+			int cols = mat.cols();
+			int rows = mat.rows();
+			int elemSize = (int) mat.elemSize();
+
+			byte[] data = new byte[cols * rows * elemSize];
+
+			mat.get(0, 0, data);
+
+			obj.addProperty("rows", mat.rows());
+			obj.addProperty("cols", mat.cols());
+			obj.addProperty("type", mat.type());
+
+			// We cannot set binary data to a json object, so:
+			// Encoding data byte array to Base64.
+			//String dataString = new String(Base64.encode(data, Base64.DEFAULT));
+			String dataString = new String(Base64.getEncoder().encodeToString(data));
+
+			obj.addProperty("data", dataString);
+
+			Gson gson = new Gson();
+			String json = gson.toJson(obj);
+
+			return json;
+		} else {
+			System.out.println("");
+		}
+		return "{}";
+	}
+
+	public static Mat matFromJson(String json) {
+		JsonParser parser = new JsonParser();
+		JsonObject JsonObject = parser.parse(json).getAsJsonObject();
+
+		int rows = JsonObject.get("rows").getAsInt();
+		int cols = JsonObject.get("cols").getAsInt();
+		int type = JsonObject.get("type").getAsInt();
+
+		String dataString = JsonObject.get("data").getAsString();
+		//byte[] data = Base64.decode(dataString.getBytes(), Base64.DEFAULT);
+		byte[] data = Base64.getDecoder().decode(dataString.getBytes());
+
+		Mat mat = new Mat(rows, cols, type);
+		mat.put(0, 0, data);
+
+		return mat;
 	}
 }

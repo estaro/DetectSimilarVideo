@@ -20,6 +20,7 @@ public class VideoMetadata {
 		return frameDirname + "/" + index + ".jpg";
 	}
 
+
 	public String getFilename() {
 		return filename;
 	}

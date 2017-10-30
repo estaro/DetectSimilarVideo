@@ -23,11 +23,11 @@ public class TableItem {
 	}
 
 	public TableItem(VideoComparison compared) {
-		setDir1(compared.getVideo1().getFilename());
-		setDir2(compared.getVideo2().getFilename());
+		setDir1(compared.getFilename1());
+		setDir2(compared.getFilename2());
 		setFeature(compared.getFeature());
 		setHist(compared.getHist());
-		setTime(compared.getPlayTimeDiff());
+		setTime(compared.getPlaytime());
 		org = compared;
 	}
 

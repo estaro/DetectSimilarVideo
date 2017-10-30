@@ -10,9 +10,40 @@ public class VideoComparison {
 
 	private Double feature;
 
+	private String filename1;
 
-	public long getPlayTimeDiff ()  {
-		return Math.abs(video1.getPlayTime() - video2.getPlayTime());
+	private String filename2;
+
+	private Long playtime;
+
+	public Long getPlaytime() {
+		return playtime;
+	}
+
+	public void setPlaytime(Long playtime) {
+		this.playtime = playtime;
+	}
+
+	public String getFilename1() {
+		if (video1 == null) {
+			return filename1;
+		}
+		return video1.getFilename();
+	}
+
+	public void setFilename1(String filename1) {
+		this.filename1 = filename1;
+	}
+
+	public String getFilename2() {
+		if (video2 == null) {
+			return filename2;
+		}
+		return video2.getFilename();
+	}
+
+	public void setFilename2(String filename2) {
+		this.filename2 = filename2;
 	}
 
 	public VideoMetadata getVideo1() {
@@ -46,6 +77,5 @@ public class VideoComparison {
 	public void setFeature(Double feature) {
 		this.feature = feature;
 	}
-
 
 }
