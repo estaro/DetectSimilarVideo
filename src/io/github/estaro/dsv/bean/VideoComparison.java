@@ -2,19 +2,25 @@ package io.github.estaro.dsv.bean;
 
 public class VideoComparison {
 
-	private VideoMetadata video1;
+	private VideoMetadata video1 = null;
 
-	private VideoMetadata video2;
+	private VideoMetadata video2 = null;
 
-	private Double hist;
+	private Double hist = 0.0;
 
-	private Double feature;
+	private Double feature = 999.0;
 
-	private String filename1;
+	private String filename1 = "";
 
-	private String filename2;
+	private String filename2 = "";
 
-	private Long playtime;
+	private Long playtime = 0L;
+
+	private Integer skip = 0;
+
+	public String getKey() {
+		return filename1 + "<--->" + filename2;
+	}
 
 	public Long getPlaytime() {
 		return playtime;
@@ -76,6 +82,14 @@ public class VideoComparison {
 
 	public void setFeature(Double feature) {
 		this.feature = feature;
+	}
+
+	public Integer getSkip() {
+		return skip;
+	}
+
+	public void setSkip(Integer skip) {
+		this.skip = skip;
 	}
 
 }

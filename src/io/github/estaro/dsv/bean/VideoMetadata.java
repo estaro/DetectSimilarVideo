@@ -1,25 +1,38 @@
 package io.github.estaro.dsv.bean;
 
-import java.util.List;
+import java.io.Serializable;
 
-import org.opencv.core.Mat;
-
-public class VideoMetadata {
+public class VideoMetadata implements Serializable {
 
 	private String filename;
 
 	private String frameDirname;
 
-	private Long playTime;
+	private String metadataLabel;
 
-	private List<Mat> histgramImg;
+	public String getMetadataLabel() {
+		return metadataLabel;
+	}
 
-	private List<Mat> featureImg;
+	public void setMetadataLabel(String metadataLabel) {
+		this.metadataLabel = metadataLabel;
+	}
 
 	public String getImagefile(int index) {
 		return frameDirname + "/" + index + ".jpg";
 	}
 
+	public String getHistFilename(int index) {
+		return frameDirname + "/" + index + "_hist.json";
+	}
+
+	public String getFeatFilename(int index) {
+		return frameDirname + "/" + index + "_feat.json";
+	}
+
+	public String getMetaFilename() {
+		return frameDirname + "/metadata.properties";
+	}
 
 	public String getFilename() {
 		return filename;
@@ -36,30 +49,5 @@ public class VideoMetadata {
 	public void setFrameDirname(String frameDirname) {
 		this.frameDirname = frameDirname;
 	}
-
-	public Long getPlayTime() {
-		return playTime;
-	}
-
-	public void setPlayTime(Long playTime) {
-		this.playTime = playTime;
-	}
-
-	public List<Mat> getHistgramImg() {
-		return histgramImg;
-	}
-
-	public void setHistgramImg(List<Mat> histgramImg) {
-		this.histgramImg = histgramImg;
-	}
-
-	public List<Mat> getFeatureImg() {
-		return featureImg;
-	}
-
-	public void setFeatureImg(List<Mat> featureImg) {
-		this.featureImg = featureImg;
-	}
-
 
 }

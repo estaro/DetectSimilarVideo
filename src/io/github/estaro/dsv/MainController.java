@@ -1,10 +1,9 @@
 package io.github.estaro.dsv;
 
-import java.io.BufferedWriter;
 import java.io.File;
-import java.io.FileWriter;
 import java.io.IOException;
 import java.net.URL;
+import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.LinkedList;
@@ -13,9 +12,6 @@ import java.util.Map;
 import java.util.ResourceBundle;
 import java.util.stream.Collectors;
 
-import com.orangesignal.csv.CsvConfig;
-import com.orangesignal.csv.manager.CsvEntityManager;
-
 import io.github.estaro.dsv.bean.CachedComparison;
 import io.github.estaro.dsv.bean.Config;
 import io.github.estaro.dsv.bean.ListItem;
@@ -23,6 +19,7 @@ import io.github.estaro.dsv.bean.TableItem;
 import io.github.estaro.dsv.bean.VideoComparison;
 import io.github.estaro.dsv.bean.VideoMetadata;
 import io.github.estaro.dsv.bean.VideoMetadataPair;
+import io.github.estaro.dsv.logic.CacheAccessor;
 import io.github.estaro.dsv.logic.OpenCvProcessor;
 import io.github.estaro.dsv.util.ConfigParser;
 import javafx.collections.FXCollections;
@@ -34,6 +31,7 @@ import javafx.scene.control.Alert;
 import javafx.scene.control.Alert.AlertType;
 import javafx.scene.control.ButtonType;
 import javafx.scene.control.ContextMenu;
+import javafx.scene.control.Label;
 import javafx.scene.control.ListView;
 import javafx.scene.control.MenuItem;
 import javafx.scene.control.ProgressBar;
@@ -55,6 +53,12 @@ public class MainController {
 
 	@FXML // URL location of the FXML file that was given to the FXMLLoader
 	private URL location;
+
+	@FXML
+	private Label label1;
+
+	@FXML
+	private Label label2;
 
 	@FXML
 	private ListView<ListItem> listview;
@@ -201,10 +205,15 @@ public class MainController {
 	 * [実行]ボタン
 	 *
 	 * @param event
+	 * @throws SQLException
 	 */
 	@FXML
-	void doExecuteAction(ActionEvent event) throws IOException {
+	void doExecuteAction(ActionEvent event) throws IOException, SQLException {
 		System.out.println("doExecuteAction");
+
+		// 前の結果のクリア
+		table.getItems().clear();
+
 		long start = System.currentTimeMillis();
 		// ------------------------------------------------------------------
 		// 選択されたすべてのディレクトリの動画を読み込む
@@ -215,12 +224,15 @@ public class MainController {
 				continue;
 			}
 			String dirname = item.getName();
+			System.out.println(dirname);
 			File dir = new File(dirname);
 			if (!dir.exists()) {
 				continue;
 			}
-			fileList = getAllChildren(dir);
+			fileList.addAll(getAllChildren(dir));
 		}
+		System.out.println("対象ファイル数:" + fileList.size());
+
 		List<VideoMetadata> metaList = fileList.parallelStream().map(file -> {
 			try {
 				return OpenCvProcessor.captureFrame(config,
@@ -230,29 +242,16 @@ public class MainController {
 				return null;
 			}
 		}).filter(s -> s != null).collect(Collectors.toList());
+		metaList.sort((arg0, arg1) -> {
+			return arg0.getFilename().compareTo(arg1.getFilename());
+		});
 
 		// ------------------------------------------------------------------
-		// CSVからキャッシュ情報を読み込む
+		// キャッシュ情報を読み込む
 		// ------------------------------------------------------------------
-		CsvConfig csvConfig = new CsvConfig();
-		csvConfig.setLineSeparator("\n");
-		csvConfig.setUtf8bomPolicy(false);
-		String cachedFilename = config.getTempDir() + "/_cached.csv";
-		File cachedFile = new File(cachedFilename);
-		List<CachedComparison> csvList = null;
-		/*
-		if (!cachedFile.exists()) {
-			//cachedFile.createNewFile();
-		} else {
-			csvList = new CsvEntityManager(csvConfig)
-					.load(CachedComparison.class)
-					.from(cachedFile);
-
-		}
-		*/
-		final Map<String, CachedComparison> cachedComp = csvList == null ? null
-				: csvList.stream()
-						.collect(Collectors.toMap(x -> x.file1 + "<--->" + x.file2, x -> x));
+		CacheAccessor cache = CacheAccessor.getInstace(config);
+		final Map<String, CachedComparison> cachedComp = cache.selectCacheData();
+		System.out.println("cache size:" + cachedComp.size());
 
 		// ------------------------------------------------------------------
 		// 読み込んだ動画を比較
@@ -279,24 +278,19 @@ public class MainController {
 		// ------------------------------------------------------------------
 		// 結果をキャッシュとして保存
 		// ------------------------------------------------------------------
-		List<CachedComparison> newCaechedList = comparedList.stream().map(compared -> {
-			CachedComparison cache = new CachedComparison();
-			cache.file1 = compared.getFilename1();
-			cache.file2 = compared.getFilename1();
-			cache.playtimeDiff = compared.getPlaytime();
-			cache.hist = compared.getHist();
-			cache.feature = compared.getFeature();
-			return cache;
-		}).collect(Collectors.toList());
-		new CsvEntityManager(csvConfig).save(newCaechedList, CachedComparison.class)
-				.to(new BufferedWriter(new FileWriter(config.getTempDir() + "\\\\_cached.csv")));
+		cache.updateCache(comparedList);
+		System.out.println("new cache size:" + comparedList.size());
 
 		// ------------------------------------------------------------------
 		// 結果をTableViewに反映
 		// ------------------------------------------------------------------
-		table.getItems().clear();
+		List<VideoComparison> notSkippedList = comparedList.parallelStream()
+				.filter(s -> s.getSkip() == 0)
+				.collect(Collectors.toList());
+		System.out.println("no skip list size:" + notSkippedList.size());
+
 		// hist基準でソート
-		comparedList.sort((arg0, arg1) -> {
+		notSkippedList.sort((arg0, arg1) -> {
 			double diff = arg0.getHist() - arg1.getHist();
 			if (diff < 0)
 				return 1;
@@ -305,7 +299,13 @@ public class MainController {
 			return 0;
 		});
 
-		List<VideoComparison> resultList = comparedList.subList(0, 501);
+		// 結果出力数を制限する
+		int resultSize = notSkippedList.size();
+		if (resultSize > 500) {
+			resultSize = 500;
+		}
+		List<VideoComparison> resultList = notSkippedList.subList(0, resultSize);
+
 		List<TableItem> tableItemList = resultList.stream().map(item -> new TableItem(item))
 				.collect(Collectors.toList());
 		cola.setCellValueFactory(new PropertyValueFactory<>("dir1"));
@@ -323,6 +323,119 @@ public class MainController {
 		long end = System.currentTimeMillis();
 		Alert alert = new Alert(AlertType.INFORMATION, "処理が完了しました (" + (end - start) + ")ms");
 		alert.showAndWait();
+	}
+
+	/**
+	 * 画像相違チェックボタン
+	 *
+	 * @param event
+	 * @throws SQLException
+	 */
+	@FXML
+	void doCheck(ActionEvent event) throws SQLException {
+		TableItem item = table.getSelectionModel().getSelectedItem();
+		if (item != null) {
+			VideoComparison comp = item.getOrg();
+			CacheAccessor cache = CacheAccessor.getInstace(config);
+			cache.updateSkip(comp.getKey());
+			table.getSelectionModel().selectNext();
+		}
+	}
+
+	/**
+	 * ファイル削除ボタン1(左)
+	 * @param event
+	 */
+	@FXML
+	void doDelFile1(ActionEvent event) {
+		TableItem item = table.getSelectionModel().getSelectedItem();
+		if (item != null) {
+			VideoComparison comp = item.getOrg();
+			File file = new File(comp.getFilename1());
+			if (file.exists()) {
+				Alert alert = new Alert(AlertType.CONFIRMATION, comp.getFilename1() + "を削除します。");
+				alert.showAndWait().ifPresent(response -> {
+					if (response == ButtonType.OK) {
+						file.delete();
+					}
+				});
+			} else {
+				Alert alert = new Alert(AlertType.INFORMATION, "ファイルが存在しません。");
+				alert.showAndWait();
+			}
+		}
+	}
+
+	/**
+	 * ファイル削除ボタン2(右)
+	 * @param event
+	 */
+	@FXML
+	void doDelFile2(ActionEvent event) {
+		TableItem item = table.getSelectionModel().getSelectedItem();
+		if (item != null) {
+			VideoComparison comp = item.getOrg();
+			File file = new File(comp.getFilename2());
+			if (file.exists()) {
+				Alert alert = new Alert(AlertType.CONFIRMATION, comp.getFilename2() + "を削除します。");
+				alert.showAndWait().ifPresent(response -> {
+					if (response == ButtonType.OK) {
+						file.delete();
+					}
+				});
+			} else {
+				Alert alert = new Alert(AlertType.INFORMATION, "ファイルが存在しません。");
+				alert.showAndWait();
+			}
+		}
+	}
+
+	/**
+	 * 動画再生(左)
+	 * @param event
+	 * @throws IOException
+	 */
+	@FXML
+	void doPlay1(ActionEvent event) throws IOException {
+		TableItem item = table.getSelectionModel().getSelectedItem();
+		if (item != null) {
+			VideoComparison comp = item.getOrg();
+			//TODO 実行プログラムの非固定化
+			Runtime.getRuntime().exec("\"C:\\Program Files\\MPC-HC\\mpc-hc64.exe\" " + comp.getFilename1());
+		}
+	}
+
+	/**
+	 * 動画再生(右)
+	 * @param event
+	 * @throws IOException
+	 */
+	@FXML
+	void doPlay2(ActionEvent event) throws IOException {
+		TableItem item = table.getSelectionModel().getSelectedItem();
+		if (item != null) {
+			VideoComparison comp = item.getOrg();
+			//TODO 実行プログラムの非固定化
+			Runtime.getRuntime().exec("\"C:\\Program Files\\MPC-HC\\mpc-hc64.exe\" " + comp.getFilename2());
+		}
+	}
+
+	/**
+	 * 選択↓
+	 * @param event
+	 */
+	@FXML
+	void doSelectDown(ActionEvent event) {
+		table.getSelectionModel().selectNext();
+	}
+
+	/**
+	 * 選択↑
+	 * @param event
+	 */
+	@FXML
+	void doSelectUp(ActionEvent event) {
+		table.getSelectionModel().selectPrevious();
 	}
 
 	@FXML // This method is called by the FXMLLoader when initialization is complete
@@ -352,28 +465,32 @@ public class MainController {
 
 		table.getSelectionModel().selectedIndexProperty().addListener((ob, old, current) -> {
 			TableItem item = table.getSelectionModel().getSelectedItem();
-			VideoComparison comp = item.getOrg();
+			if (item != null) {
+				VideoComparison comp = item.getOrg();
 
-			img00.setImage(getImage(comp.getVideo1().getFrameDirname() + "/1.jpg"));
-			img10.setImage(getImage(comp.getVideo1().getFrameDirname() + "/2.jpg"));
-			img20.setImage(getImage(comp.getVideo1().getFrameDirname() + "/3.jpg"));
-			img01.setImage(getImage(comp.getVideo1().getFrameDirname() + "/4.jpg"));
-			img11.setImage(getImage(comp.getVideo1().getFrameDirname() + "/5.jpg"));
-			img21.setImage(getImage(comp.getVideo1().getFrameDirname() + "/6.jpg"));
-			img02.setImage(getImage(comp.getVideo1().getFrameDirname() + "/7.jpg"));
-			img12.setImage(getImage(comp.getVideo1().getFrameDirname() + "/8.jpg"));
-			img22.setImage(getImage(comp.getVideo1().getFrameDirname() + "/9.jpg"));
+				img00.setImage(getImage(comp.getVideo1().getImagefile(1)));
+				img10.setImage(getImage(comp.getVideo1().getImagefile(2)));
+				img20.setImage(getImage(comp.getVideo1().getImagefile(3)));
+				img01.setImage(getImage(comp.getVideo1().getImagefile(4)));
+				img11.setImage(getImage(comp.getVideo1().getImagefile(5)));
+				img21.setImage(getImage(comp.getVideo1().getImagefile(6)));
+				img02.setImage(getImage(comp.getVideo1().getImagefile(7)));
+				img12.setImage(getImage(comp.getVideo1().getImagefile(8)));
+				img22.setImage(getImage(comp.getVideo1().getImagefile(9)));
 
-			img30.setImage(getImage(comp.getVideo2().getFrameDirname() + "/1.jpg"));
-			img40.setImage(getImage(comp.getVideo2().getFrameDirname() + "/2.jpg"));
-			img50.setImage(getImage(comp.getVideo2().getFrameDirname() + "/3.jpg"));
-			img31.setImage(getImage(comp.getVideo2().getFrameDirname() + "/4.jpg"));
-			img41.setImage(getImage(comp.getVideo2().getFrameDirname() + "/5.jpg"));
-			img51.setImage(getImage(comp.getVideo2().getFrameDirname() + "/6.jpg"));
-			img32.setImage(getImage(comp.getVideo2().getFrameDirname() + "/7.jpg"));
-			img42.setImage(getImage(comp.getVideo2().getFrameDirname() + "/8.jpg"));
-			img52.setImage(getImage(comp.getVideo2().getFrameDirname() + "/9.jpg"));
+				img30.setImage(getImage(comp.getVideo2().getImagefile(1)));
+				img40.setImage(getImage(comp.getVideo2().getImagefile(2)));
+				img50.setImage(getImage(comp.getVideo2().getImagefile(3)));
+				img31.setImage(getImage(comp.getVideo2().getImagefile(4)));
+				img41.setImage(getImage(comp.getVideo2().getImagefile(5)));
+				img51.setImage(getImage(comp.getVideo2().getImagefile(6)));
+				img32.setImage(getImage(comp.getVideo2().getImagefile(7)));
+				img42.setImage(getImage(comp.getVideo2().getImagefile(8)));
+				img52.setImage(getImage(comp.getVideo2().getImagefile(9)));
 
+				label1.setText(comp.getVideo1().getMetadataLabel());
+				label2.setText(comp.getVideo2().getMetadataLabel());
+			}
 		});
 	}
 
