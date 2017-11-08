@@ -9,6 +9,7 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.PrintWriter;
+import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -93,7 +94,7 @@ public class OpenCvProcessor {
 		double fps = capture.get(Videoio.CV_CAP_PROP_FPS);
 		int width = (int) capture.get(Videoio.CV_CAP_PROP_FRAME_WIDTH);
 		int height = (int) capture.get(Videoio.CV_CAP_PROP_FRAME_HEIGHT);
-		int resizeHeight = (int) ((double)config.getImageWidth() / width * height);
+		int resizeHeight = (int) ((double) config.getImageWidth() / width * height);
 		double allFrameCnt = capture.get(Videoio.CV_CAP_PROP_FRAME_COUNT);
 		int captureInterval = (int) (allFrameCnt / (config.getCaptureCount() + 1));
 		long time = (long) (allFrameCnt / fps);
@@ -170,9 +171,10 @@ public class OpenCvProcessor {
 	 * @return
 	 * @throws IOException
 	 * @throws FileNotFoundException
+	 * @throws SQLException
 	 */
 	static public VideoComparison compareImages(Config config, Map<String, CachedComparison> cache,
-			VideoMetadata video1, VideoMetadata video2) throws FileNotFoundException, IOException {
+			VideoMetadata video1, VideoMetadata video2) throws FileNotFoundException, IOException, SQLException {
 
 		VideoComparison videoComparison = new VideoComparison();
 		videoComparison.setFilename1(video1.getFilename());
@@ -183,6 +185,7 @@ public class OpenCvProcessor {
 		if (cache != null && cache.containsKey(key)) {
 			//System.out.println("cached");
 			CachedComparison cachedComp = cache.get(key);
+			System.out.println("cached");
 			videoComparison.setVideo1(video1);
 			videoComparison.setVideo2(video2);
 			videoComparison.setFilename1(cachedComp.file1);
@@ -268,7 +271,6 @@ public class OpenCvProcessor {
 				// noop
 			}
 		}
-
 
 		videoComparison.setHist(calcAvg(histList));
 		videoComparison.setFeature(calcAvg(featureList));

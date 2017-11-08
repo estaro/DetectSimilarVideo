@@ -46,6 +46,9 @@ import javafx.stage.DirectoryChooser;
 
 public class MainController {
 
+	/**
+	 * 対象とするファイルの拡張子
+	 */
 	static final String[] VIDEO_EXT = { ".asf", ".avi", ".flv", ".mkv", ".mp4", ".wmv" };
 
 	@FXML // ResourceBundle that was given to the FXMLLoader
@@ -246,66 +249,57 @@ public class MainController {
 			return arg0.getFilename().compareTo(arg1.getFilename());
 		});
 
-		// ------------------------------------------------------------------
-		// キャッシュ情報を読み込む
-		// ------------------------------------------------------------------
 		CacheAccessor cache = CacheAccessor.getInstace(config);
-		final Map<String, CachedComparison> cachedComp = cache.selectCacheData();
-		System.out.println("cache size:" + cachedComp.size());
 
 		// ------------------------------------------------------------------
 		// 読み込んだ動画を比較
 		// ------------------------------------------------------------------
-		List<VideoMetadataPair> metadataPairList = new ArrayList<>();
 		int metaSize = metaList.size();
+
+		metaList.parallelStream().(meta -> {
+
+
+
+		});
+
 		for (int i = 0; i < metaSize; i++) {
+			System.out.println("axis:" + metaList.get(i).getFilename());
+			List<VideoMetadataPair> metadataPairList = new ArrayList<>();
 			for (int j = i + 1; j < metaSize; j++) {
 				metadataPairList.add(new VideoMetadataPair(metaList.get(i), metaList.get(j)));
 			}
-		}
-		List<VideoComparison> comparedList = metadataPairList.parallelStream()
-				.map(pair -> {
-					try {
-						return OpenCvProcessor.compareImages(config, cachedComp, pair.video1, pair.video2);
-					} catch (IOException e) {
-						e.printStackTrace();
-						return null;
-					}
-				})
-				.filter(s -> s != null)
-				.collect(Collectors.toList());
+			Map<String, CachedComparison> cachedComp = cache.selectCacheData(metaList.get(i).getFilename());
+			System.out.println("cache size:" + cachedComp.size());
 
-		// ------------------------------------------------------------------
-		// 結果をキャッシュとして保存
-		// ------------------------------------------------------------------
-		cache.updateCache(comparedList);
-		System.out.println("new cache size:" + comparedList.size());
+			List<VideoComparison> comparedList = metadataPairList.parallelStream()
+					.map(pair -> {
+						try {
+							VideoComparison result = OpenCvProcessor.compareImages(config, cachedComp, pair.video1,
+									pair.video2);
+							return result;
+						} catch (IOException | SQLException e) {
+							e.printStackTrace();
+							return null;
+						}
+					})
+					.filter(s -> s != null)
+					.collect(Collectors.toList());
+
+			// ------------------------------------------------------------------
+			// 結果をキャッシュとして保存
+			// ------------------------------------------------------------------
+			cache.updateCache(comparedList);
+			cachedComp.clear();
+			System.out.println("new cache size:" + comparedList.size());
+
+			comparedList.clear();
+			comparedList = null;
+		}
 
 		// ------------------------------------------------------------------
 		// 結果をTableViewに反映
 		// ------------------------------------------------------------------
-		List<VideoComparison> notSkippedList = comparedList.parallelStream()
-				.filter(s -> s.getSkip() == 0)
-				.collect(Collectors.toList());
-		System.out.println("no skip list size:" + notSkippedList.size());
-
-		// hist基準でソート
-		notSkippedList.sort((arg0, arg1) -> {
-			double diff = arg0.getHist() - arg1.getHist();
-			if (diff < 0)
-				return 1;
-			else if (0 < diff)
-				return -1;
-			return 0;
-		});
-
-		// 結果出力数を制限する
-		int resultSize = notSkippedList.size();
-		if (resultSize > 500) {
-			resultSize = 500;
-		}
-		List<VideoComparison> resultList = notSkippedList.subList(0, resultSize);
-
+		List<VideoComparison> resultList = cache.selectActive();
 		List<TableItem> tableItemList = resultList.stream().map(item -> new TableItem(item))
 				.collect(Collectors.toList());
 		cola.setCellValueFactory(new PropertyValueFactory<>("dir1"));
@@ -339,6 +333,7 @@ public class MainController {
 			CacheAccessor cache = CacheAccessor.getInstace(config);
 			cache.updateSkip(comp.getKey());
 			table.getSelectionModel().selectNext();
+			table.scrollTo(table.getSelectionModel().getSelectedIndex());
 		}
 	}
 
@@ -427,6 +422,7 @@ public class MainController {
 	@FXML
 	void doSelectDown(ActionEvent event) {
 		table.getSelectionModel().selectNext();
+		table.scrollTo(table.getSelectionModel().getSelectedIndex());
 	}
 
 	/**
@@ -436,6 +432,7 @@ public class MainController {
 	@FXML
 	void doSelectUp(ActionEvent event) {
 		table.getSelectionModel().selectPrevious();
+		table.scrollTo(table.getSelectionModel().getSelectedIndex());
 	}
 
 	@FXML // This method is called by the FXMLLoader when initialization is complete
