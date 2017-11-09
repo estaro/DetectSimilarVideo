@@ -254,8 +254,6 @@ public class MainController {
 		// ------------------------------------------------------------------
 		// 読み込んだ動画を比較
 		// ------------------------------------------------------------------
-		int metaSize = metaList.size();
-
 		List<Boolean> voidList = metaList.parallelStream().map(meta -> {
 			System.out.println("axis:" + meta.getFilename());
 			List<VideoMetadataPair> metadataPairList = new ArrayList<>();
@@ -281,10 +279,9 @@ public class MainController {
 						})
 						.filter(s -> s != null)
 						.collect(Collectors.toList());
-				cache.updateCache(comparedList);
+				cache.updateCache(meta.getFilename(), comparedList);
 				cachedComp.clear();
 				System.out.println("new cache size:" + comparedList.size());
-
 				comparedList.clear();
 				comparedList = null;
 			} catch (SQLException e1) {
@@ -293,43 +290,9 @@ public class MainController {
 			}
 
 			return true;
-		}).collect(Collectors.toList());;
+		}).collect(Collectors.toList());
+		;
 
-		/*
-		for (int i = 0; i < metaSize; i++) {
-			System.out.println("axis:" + metaList.get(i).getFilename());
-			List<VideoMetadataPair> metadataPairList = new ArrayList<>();
-			for (int j = i + 1; j < metaSize; j++) {
-				metadataPairList.add(new VideoMetadataPair(metaList.get(i), metaList.get(j)));
-			}
-			Map<String, CachedComparison> cachedComp = cache.selectCacheData(metaList.get(i).getFilename());
-			System.out.println("cache size:" + cachedComp.size());
-
-			List<VideoComparison> comparedList = metadataPairList.parallelStream()
-					.map(pair -> {
-						try {
-							VideoComparison result = OpenCvProcessor.compareImages(config, cachedComp, pair.video1,
-									pair.video2);
-							return result;
-						} catch (IOException | SQLException e) {
-							e.printStackTrace();
-							return null;
-						}
-					})
-					.filter(s -> s != null)
-					.collect(Collectors.toList());
-
-			// ------------------------------------------------------------------
-			// 結果をキャッシュとして保存
-			// ------------------------------------------------------------------
-			cache.updateCache(comparedList);
-			cachedComp.clear();
-			System.out.println("new cache size:" + comparedList.size());
-
-			comparedList.clear();
-			comparedList = null;
-		}
-*/
 		// ------------------------------------------------------------------
 		// 結果をTableViewに反映
 		// ------------------------------------------------------------------
@@ -365,7 +328,7 @@ public class MainController {
 		if (item != null) {
 			VideoComparison comp = item.getOrg();
 			CacheAccessor cache = CacheAccessor.getInstace(config);
-			cache.updateSkip(comp.getKey());
+			cache.updateSkip(comp.getKey(), comp.getFilename1());
 			table.getSelectionModel().selectNext();
 			table.scrollTo(table.getSelectionModel().getSelectedIndex());
 		}
