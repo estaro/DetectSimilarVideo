@@ -1,6 +1,7 @@
 package io.github.estaro.dsv;
 
 import java.io.File;
+import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.net.URL;
 import java.sql.SQLException;
@@ -255,6 +256,7 @@ public class MainController {
 		// 読み込んだ動画を比較
 		// ------------------------------------------------------------------
 		List<Boolean> voidList = metaList.parallelStream().map(meta -> {
+			System.out.println("");
 			System.out.println("axis:" + meta.getFilename());
 			List<VideoMetadataPair> metadataPairList = new ArrayList<>();
 			for (int j = 0; j < metaList.size(); j++) {
@@ -262,7 +264,7 @@ public class MainController {
 					metadataPairList.add(new VideoMetadataPair(meta, metaList.get(j)));
 				}
 			}
-
+			System.out.println("combination:" + metadataPairList.size());
 			try {
 				Map<String, CachedComparison> cachedComp = cache.selectCacheData(meta.getFilename());
 				System.out.println("cache size:" + cachedComp.size());
@@ -288,7 +290,7 @@ public class MainController {
 				e1.printStackTrace();
 
 			}
-
+			System.out.println("");
 			return true;
 		}).collect(Collectors.toList());
 		;
@@ -312,7 +314,61 @@ public class MainController {
 		// 終了メッセージ
 		// ------------------------------------------------------------------
 		long end = System.currentTimeMillis();
-		Alert alert = new Alert(AlertType.INFORMATION, "処理が完了しました (" + (end - start) + ")ms");
+
+		double processTime = (end - start) / 1000;
+		String unit = "s";
+		if (processTime > 3600) {
+			processTime = processTime / 3600;
+			unit = "h";
+		}
+
+		Alert alert = new Alert(AlertType.INFORMATION, "処理が完了しました (" + Double.toString(processTime) + ")" + unit);
+		alert.showAndWait();
+	}
+
+	/**
+	 * [cache]ボタン
+	 * @param event
+	 * @throws SQLException
+	 * @throws IOException
+	 * @throws FileNotFoundException
+	 */
+	@FXML
+	void doNoCompute(ActionEvent event) throws SQLException, FileNotFoundException, IOException {
+		System.out.println("doNoCompute");
+		long start = System.currentTimeMillis();
+		// 前の結果のクリア
+		table.getItems().clear();
+		// ------------------------------------------------------------------
+		// 結果をTableViewに反映
+		// ------------------------------------------------------------------
+		CacheAccessor cache = CacheAccessor.getInstace(config);
+		cache.connectExistDatabase();
+		List<VideoComparison> resultList = cache.selectActive();
+		List<TableItem> tableItemList = resultList.stream().map(item -> new TableItem(item))
+				.collect(Collectors.toList());
+		cola.setCellValueFactory(new PropertyValueFactory<>("dir1"));
+		colb.setCellValueFactory(new PropertyValueFactory<>("dir2"));
+		coltime.setCellValueFactory(new PropertyValueFactory<>("time"));
+		colhist.setCellValueFactory(new PropertyValueFactory<>("hist"));
+		colfeature.setCellValueFactory(new PropertyValueFactory<>("feature"));
+
+		ObservableList<TableItem> data = FXCollections.observableArrayList(tableItemList);
+		table.setItems(data);
+
+		// ------------------------------------------------------------------
+		// 終了メッセージ
+		// ------------------------------------------------------------------
+		long end = System.currentTimeMillis();
+
+		double processTime = (end - start) / 1000;
+		String unit = "s";
+		if (processTime > 3600) {
+			processTime = processTime / 3600;
+			unit = "h";
+		}
+
+		Alert alert = new Alert(AlertType.INFORMATION, "処理が完了しました (" + Double.toString(processTime) + ")" + unit);
 		alert.showAndWait();
 	}
 
@@ -393,7 +449,7 @@ public class MainController {
 		if (item != null) {
 			VideoComparison comp = item.getOrg();
 			//TODO 実行プログラムの非固定化
-			Runtime.getRuntime().exec("\"C:\\Program Files\\MPC-HC\\mpc-hc64.exe\" " + comp.getFilename1());
+			Runtime.getRuntime().exec("\"C:\\Program Files\\MPC-HC\\mpc-hc64.exe\" \"" + comp.getFilename1() + "\"");
 		}
 	}
 
@@ -408,7 +464,7 @@ public class MainController {
 		if (item != null) {
 			VideoComparison comp = item.getOrg();
 			//TODO 実行プログラムの非固定化
-			Runtime.getRuntime().exec("\"C:\\Program Files\\MPC-HC\\mpc-hc64.exe\" " + comp.getFilename2());
+			Runtime.getRuntime().exec("\"C:\\Program Files\\MPC-HC\\mpc-hc64.exe\" \"" + comp.getFilename2() + "\"");
 		}
 	}
 
@@ -445,8 +501,8 @@ public class MainController {
 		MenuItem mi = new MenuItem("エクスプローラで開く");
 		mi.setOnAction(event -> {
 			TableItem item = table.getSelectionModel().getSelectedItem();
-			String command1 = "explorer /select," + item.getOrg().getVideo1().getFilename().replace("\\\\", "\\");
-			String command2 = "explorer /select," + item.getOrg().getVideo2().getFilename().replace("\\\\", "\\");
+			String command1 = "explorer /select,\"" + item.getOrg().getVideo1().getFilename().replace("\\\\", "\\") + "\"";
+			String command2 = "explorer /select,\"" + item.getOrg().getVideo2().getFilename().replace("\\\\", "\\") + "\"";
 			try {
 				Runtime.getRuntime().exec(command1);
 				Runtime.getRuntime().exec(command2);
@@ -502,8 +558,10 @@ public class MainController {
 			} else {
 				for (int i = 0; i < VIDEO_EXT.length; i++) {
 					if (f.getName().toLowerCase().endsWith(VIDEO_EXT[i])) {
-						result.add(f);
-						break;
+						if (f.length() > 1000 * 1000 * 100) {
+							result.add(f);
+							break;
+						}
 					}
 				}
 			}

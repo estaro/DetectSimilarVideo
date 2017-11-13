@@ -22,8 +22,8 @@ public class VideoMetadata implements Serializable {
 		return frameDirname + "/" + index + ".jpg";
 	}
 
-	public String getHistFilename(int index) {
-		return frameDirname + "/" + index + "_hist.json";
+	public String getHistFilename(int index, int ch) {
+		return frameDirname + "/" + index + "_hist_" + ch + ".json";
 	}
 
 	public String getFeatFilename(int index) {

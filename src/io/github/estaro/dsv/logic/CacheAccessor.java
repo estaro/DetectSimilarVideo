@@ -1,6 +1,9 @@
 package io.github.estaro.dsv.logic;
 
 import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
+import java.io.IOException;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
@@ -11,11 +14,13 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Properties;
 
 import io.github.estaro.dsv.bean.CachedComparison;
 import io.github.estaro.dsv.bean.Config;
 import io.github.estaro.dsv.bean.VideoComparison;
 import io.github.estaro.dsv.bean.VideoMetadata;
+import io.github.estaro.dsv.util.Common;
 
 /**
  * キャッシュの管理
@@ -68,6 +73,24 @@ public class CacheAccessor {
 		return conMap.get(part);
 	}
 
+	public void connectExistDatabase() throws SQLException {
+		File[] filelist = new File(config.getTempDir()).listFiles();
+		for (File f : filelist) {
+			if (f.getName().toLowerCase().endsWith(".db")) {
+				String filename = f.getName();
+				int size = filename.length();
+				String part = filename.substring(size - 5, size - 3);
+				createConnection(part);
+			}
+		}
+	}
+
+	private void createIndex(Connection con) throws SQLException {
+		Statement stmt = con.createStatement();
+		String sql2 = "CREATE INDEX histindex ON " + RESULT_TABLE + "(hist)";
+		stmt.execute(sql2);
+	}
+
 	private void createConnection(String name) throws SQLException {
 		String dbFile = config.getTempDir() + "/" + String.format(DB_FILE_NAME, name);
 		boolean isExist = new File(dbFile).exists();
@@ -77,6 +100,7 @@ public class CacheAccessor {
 		if (!isExist) {
 			createTableIfNotExist(con);
 		}
+		//createIndex(con);
 
 		this.conMap.put(name, con);
 	}
@@ -105,6 +129,10 @@ public class CacheAccessor {
 
 		String sql3 = "CREATE INDEX skipindex ON " + RESULT_TABLE + "(skip)";
 		stmt.execute(sql3);
+
+		String sql4 = "CREATE INDEX histindex ON " + RESULT_TABLE + "(hist)";
+		stmt.execute(sql4);
+
 	}
 
 	public Map<String, CachedComparison> selectCacheData(String file1) throws SQLException {
@@ -173,7 +201,7 @@ public class CacheAccessor {
 			prep.addBatch();
 
 			if (i++ > 900) {
-				System.out.println("commit");
+				System.out.println("ins commit");
 				prep.executeBatch();
 				con.commit();
 				i = 0;
@@ -188,7 +216,7 @@ public class CacheAccessor {
 		//this.conn.close();
 	}
 
-	public List<VideoComparison> selectActive() throws SQLException {
+	public List<VideoComparison> selectActive() throws SQLException, FileNotFoundException, IOException {
 		List<VideoComparison> activeList = new ArrayList<>();
 		for (String key : conMap.keySet()) {
 			Connection con = conMap.get(key);
@@ -212,11 +240,18 @@ public class CacheAccessor {
 					meta1.setFilename(cc.getFilename1());
 					meta1.setFrameDirname(
 							config.getTempDir() + "/" + String.valueOf(cc.getFilename1().hashCode()).replace("-", "_"));
+					Properties videoProperty1 = new Properties();
+					videoProperty1.load(new FileInputStream(meta1.getMetaFilename()));
+					meta1.setMetadataLabel(Common.getMetaLabel(videoProperty1));
 					cc.setVideo1(meta1);
+
 					VideoMetadata meta2 = new VideoMetadata();
 					meta2.setFilename(cc.getFilename2());
 					meta2.setFrameDirname(
 							config.getTempDir() + "/" + String.valueOf(cc.getFilename2().hashCode()).replace("-", "_"));
+					Properties videoProperty2 = new Properties();
+					videoProperty2.load(new FileInputStream(meta2.getMetaFilename()));
+					meta2.setMetadataLabel(Common.getMetaLabel(videoProperty2));
 					cc.setVideo2(meta2);
 
 					activeList.add(cc);
@@ -239,7 +274,12 @@ public class CacheAccessor {
 	}
 
 	public void deleteCache(List<VideoComparison> input, Connection con) throws SQLException {
+		if (input == null || input.size() <= 0) {
+			return;
+		}
+
 		System.out.println("delete size:" + input.size());
+
 		String sql = "DELETE FROM " + RESULT_TABLE + " WHERE KEY = ? ";
 		PreparedStatement prep = con.prepareStatement(sql);
 		int i = 0;
@@ -247,7 +287,7 @@ public class CacheAccessor {
 			prep.setString(1, comp.getKey());
 			prep.addBatch();
 			if (i++ > 900) {
-				System.out.println("commit");
+				System.out.println("del commit");
 				prep.executeBatch();
 				con.commit();
 				i = 0;

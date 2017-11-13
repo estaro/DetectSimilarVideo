@@ -134,6 +134,7 @@
             </Button>
             <Label fx:id="label1" layoutX="359.0" layoutY="223.0" prefHeight="70.0" prefWidth="370.0" style="-fx-background-color: white;" />
             <Label fx:id="label2" layoutX="774.0" layoutY="223.0" prefHeight="70.0" prefWidth="370.0" style="-fx-background-color: white;" />
+            <Button fx:id="cachedBtn" layoutX="122.0" layoutY="31.0" mnemonicParsing="false" onAction="#doNoCompute" prefHeight="38.0" prefWidth="76.0" text="cached" />
          </children>
       </Pane>
    </center>

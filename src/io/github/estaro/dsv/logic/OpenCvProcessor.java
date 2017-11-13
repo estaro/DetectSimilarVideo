@@ -41,6 +41,7 @@ import io.github.estaro.dsv.bean.CachedComparison;
 import io.github.estaro.dsv.bean.Config;
 import io.github.estaro.dsv.bean.VideoComparison;
 import io.github.estaro.dsv.bean.VideoMetadata;
+import io.github.estaro.dsv.util.Common;
 
 /**
  * OpenCVを使用した画像処理を提供するクラス
@@ -131,9 +132,12 @@ public class OpenCvProcessor {
 			// ------------------------------------------------------------------
 			List<Mat> src = new ArrayList<Mat>();
 			src.add(resizedFrame);
-			Mat hist = new Mat();
-			Imgproc.calcHist(src, new MatOfInt(0), new Mat(), hist, new MatOfInt(256), new MatOfFloat(0, 256));
-			storeMat(metadata.getHistFilename(i), hist);
+			for (int ch = 0; ch < 3; ch++) {
+				Mat hist = new Mat();
+				Imgproc.calcHist(src, new MatOfInt(ch), new Mat(), hist, new MatOfInt(256), new MatOfFloat(0, 256));
+				storeMat(metadata.getHistFilename(i, ch), hist);
+				hist.release();
+			}
 
 			// ------------------------------------------------------------------
 			// 特徴量
@@ -153,7 +157,6 @@ public class OpenCvProcessor {
 			resizedFrame.release();
 			gray.release();
 			point.release();
-			hist.release();
 			desc.release();
 		}
 		capture.release();
@@ -185,7 +188,7 @@ public class OpenCvProcessor {
 		if (cache != null && cache.containsKey(key)) {
 			//System.out.println("cached");
 			CachedComparison cachedComp = cache.get(key);
-			System.out.println("cached");
+			System.out.print(".");
 			videoComparison.setVideo1(video1);
 			videoComparison.setVideo2(video2);
 			videoComparison.setFilename1(cachedComp.file1);
@@ -199,10 +202,10 @@ public class OpenCvProcessor {
 
 		Properties videoProperty1 = new Properties();
 		videoProperty1.load(new FileInputStream(video1.getMetaFilename()));
-		video1.setMetadataLabel(getMetaLabel(videoProperty1));
+		video1.setMetadataLabel(Common.getMetaLabel(videoProperty1));
 		Properties videoProperty2 = new Properties();
 		videoProperty2.load(new FileInputStream(video2.getMetaFilename()));
-		video2.setMetadataLabel(getMetaLabel(videoProperty2));
+		video2.setMetadataLabel(Common.getMetaLabel(videoProperty2));
 
 		videoComparison.setVideo1(video1);
 		videoComparison.setVideo2(video2);
@@ -218,8 +221,7 @@ public class OpenCvProcessor {
 			videoComparison.setSkip(1);
 			return videoComparison;
 		}
-
-		System.out.println(key);
+		System.out.print("x");
 
 		// ------------------------------------------------------------------
 		// 特徴量のための比較器
@@ -244,11 +246,13 @@ public class OpenCvProcessor {
 			// ------------------------------------------------------------------
 			// ヒストグラムの比較
 			// ------------------------------------------------------------------
-			Mat hist1 = loadMat(video1.getHistFilename(i));
-			Mat hist2 = loadMat(video2.getHistFilename(i));
-			histList.add(Imgproc.compareHist(hist1, hist2, 0));
-			hist1.release();
-			hist2.release();
+			for (int ch = 0; ch < 3; ch++) {
+				Mat hist1 = loadMat(video1.getHistFilename(i, ch));
+				Mat hist2 = loadMat(video2.getHistFilename(i, ch));
+				histList.add(Imgproc.compareHist(hist1, hist2, 0));
+				hist1.release();
+				hist2.release();
+			}
 
 			// ------------------------------------------------------------------
 			// 特徴量の比較
@@ -275,23 +279,6 @@ public class OpenCvProcessor {
 		videoComparison.setHist(calcAvg(histList));
 		videoComparison.setFeature(calcAvg(featureList));
 		return videoComparison;
-	}
-
-	private static String getMetaLabel(Properties prop) {
-		String playtime = (String) prop.get("playtime");
-		Double size = Double.parseDouble((String) prop.get("size"));
-		String width = (String) prop.get("width");
-		String height = (String) prop.get("height");
-		String fps = (String) prop.get("fps");
-
-		StringBuilder sb = new StringBuilder();
-		sb.append("Play Time:" + playtime + "\n");
-		sb.append(String.format("File Size:%d\n", (int) (size / 1024 / 1024)));
-		sb.append("Frame Size:" + width + " * " + height + "\n");
-		sb.append("FPS:" + fps + "\n");
-
-		return sb.toString();
-
 	}
 
 	/**
